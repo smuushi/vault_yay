@@ -1,29 +1,29 @@
-import React from "react";
-import { Button } from "@chakra-ui/react";
+import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-import { useAccount } from "wagmi";
+import { useWalletClient } from "wagmi";
 import { GameAccessService } from "~~/services/GameAccessService";
 
-const DownloadButton = ({ gameId }: { gameId: number }) => {
-  const { address } = useAccount();
-  const gameService = new GameAccessService();
+export function DownloadButton({ gameId }: { gameId: number }) {
+  const { data: walletClient } = useWalletClient();
+  const [gameService] = useState(() => new GameAccessService(process.env.ENCRYPTION_KEY));
 
   const handleDownload = async () => {
-    if (!address) {
-      toast.error("Please connect your wallet");
-      return;
-    }
-
     try {
-      const encryptedHash = await gameService.getEncryptedHash(gameId);
-      const ipfsHash = await gameService.getDecryptedIpfsHash(gameId, encryptedHash, address);
-      window.location.href = `ipfs://${ipfsHash}`;
+      const data = await gameService.downloadGame(gameId.toString());
+      // Create and trigger download
+      const blob = new Blob([data]);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `game-${gameId}.bin`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      toast.success("Download started!");
     } catch (error) {
       toast.error("Must own game NFT to download");
     }
   };
 
-  return <Button onClick={handleDownload}>Download Game</Button>;
-};
-
-export default DownloadButton;
+  return <button onClick={handleDownload}>Download Game</button>;
+}

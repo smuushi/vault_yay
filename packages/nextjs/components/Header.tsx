@@ -105,6 +105,9 @@ export const Header = () => {
       <div className="navbar-end flex-grow mr-4">
         <RainbowKitCustomConnectButton />
         <FaucetButton />
+        <Link href="/upload">Upload</Link>
+        <Link href="/transfer">Transfer</Link>
+        <Link href="/download">Download</Link>
       </div>
     </div>
   );

@@ -92,3 +92,46 @@ This creates a trustless system where:
 - Access rights are automatically enforced
 - No central point of failure
 - Ownership verification is done on-chain
+
+### Storage Key Protection
+
+```solidity
+// GameOwnership.sol
+contract GameOwnership is ERC1155 {
+    // Storage keys are encrypted with NFT-specific data
+    mapping(uint256 => bytes) private encryptedStorageKeys;
+
+    function getStorageKey(uint256 gameId, address user) external view returns (bytes32) {
+        require(balanceOf(user, gameId) > 0, "Not owner");
+        // Key is encrypted with user's NFT data
+        return decryptStorageKey(encryptedStorageKeys[gameId], gameId, user);
+    }
+}
+```
+
+```typescript
+// GameAccessService.ts
+private async getDecryptedStorageKey(gameId: number): Promise<string> {
+    // Each NFT holder gets a unique encrypted key
+    const encryptedKey = await this.nftContract.getStorageKey(gameId, address);
+
+    // Key is bound to:
+    // 1. NFT token ID
+    // 2. Owner's address
+    // 3. Block timestamp
+    const uniqueKey = ethers.solidityPackedKeccak256(
+        ["uint256", "address", "uint256"],
+        [gameId, address, block.timestamp]
+    );
+
+    return this.decrypt(encryptedKey, uniqueKey);
+}
+```
+
+Key Security Features:
+
+- Storage keys are never exposed in plain text
+- Each NFT holder gets a unique encrypted key
+- Keys are bound to specific NFT ownership proofs
+- Time-based key rotation possible
+- Even if intercepted, encrypted keys are useless without NFT ownership
