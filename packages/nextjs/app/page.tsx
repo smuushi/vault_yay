@@ -1,70 +1,181 @@
 "use client";
 
-import Link from "next/link";
-import type { NextPage } from "next";
-import { useAccount } from "wagmi";
-import { BugAntIcon, MagnifyingGlassIcon } from "@heroicons/react/24/outline";
-import { Address } from "~~/components/scaffold-eth";
+import { useEffect, useState } from "react";
+import { GameUploadService } from "../services/GameUploadService";
+import { Box, Button, Container, Heading, Input, Link, Stack, Text } from "@chakra-ui/react";
+import { ethers } from "ethers";
+import { useAccount, useWalletClient } from "wagmi";
+import { useToast } from "~~/components/ui/toaster";
+import { useScaffoldContract } from "~~/hooks/scaffold-eth";
 
-const Home: NextPage = () => {
+interface Game {
+  title: string;
+  ipfsHash: string;
+  price: bigint;
+  publisher: string;
+  isActive: boolean;
+}
+
+const Home = () => {
   const { address: connectedAddress } = useAccount();
+  const [title, setTitle] = useState("");
+  const [price, setPrice] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [games, setGames] = useState<Game[]>([]);
+  const [gameOwnerships, setGameOwnerships] = useState<Record<number, boolean>>({});
+
+  const { data: walletClient } = useWalletClient();
+  const { data: gameContract } = useScaffoldContract({
+    contractName: "GameOwnership",
+    walletClient,
+  });
+
+  const gameUploadService = new GameUploadService();
+  const toast = useToast();
+
+  const { data: gamesContract } = useScaffoldContract({
+    contractName: "GameOwnership",
+  });
+
+  const { data: gamesList } = useScaffoldContract({
+    contractName: "GameOwnership",
+  });
+
+  // Add effect to load games
+  useEffect(() => {
+    const loadGames = async () => {
+      if (gamesContract) {
+        const fetchedGames = await gamesContract.read.getGames();
+        setGames([...fetchedGames]);
+      }
+    };
+    loadGames();
+  }, [gamesContract]);
+
+  // Add effect to check ownership for each game
+  useEffect(() => {
+    const checkOwnerships = async () => {
+      if (!games) return;
+      const ownerships: Record<number, boolean> = {};
+      for (let i = 0; i < games.length; i++) {
+        ownerships[i] = await checkGameOwnership(i);
+      }
+      setGameOwnerships(ownerships);
+    };
+    checkOwnerships();
+  }, [games, gameContract, connectedAddress]);
+
+  const handlePublishGame = async () => {
+    if (!selectedFile || !title || !price || !gameContract) return;
+
+    try {
+      const ipfsHash = await gameUploadService.uploadGame(selectedFile);
+
+      const tx = await gameContract.write.listGame([title, ipfsHash, ethers.parseEther(price)]);
+      // await tx.wait();
+
+      toast.create({
+        title: "Game Published",
+        description: "Your game has been successfully published!",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error publishing game:", error);
+      toast.create({
+        title: "Error",
+        description: "Failed to publish game",
+        type: "error",
+      });
+    }
+  };
+
+  const checkGameOwnership = async (gameId: number) => {
+    if (!gameContract || !connectedAddress) return false;
+    try {
+      return await gameContract.read.userOwnsGame([connectedAddress, BigInt(gameId)]);
+    } catch (error) {
+      console.error("Error checking game ownership:", error);
+      return false;
+    }
+  };
+
+  const handlePurchaseGame = async (gameId: number, price: bigint) => {
+    if (!gameContract) return;
+    try {
+      const tx = await gameContract.write.purchaseGame([BigInt(gameId)], { value: price });
+      toast.create({
+        title: "Game Purchased",
+        description: "You can now download the game!",
+        type: "success",
+      });
+    } catch (error) {
+      console.error("Error purchasing game:", error);
+      toast.create({
+        title: "Error",
+        description: "Failed to purchase game",
+        type: "error",
+      });
+    }
+  };
 
   return (
     <>
-      <div className="flex items-center flex-col flex-grow pt-10">
-        <div className="px-5">
-          <h1 className="text-center">
-            <span className="block text-2xl mb-2">Welcome to</span>
-            <span className="block text-4xl font-bold">Scaffold-ETH 2</span>
-          </h1>
-          <div className="flex justify-center items-center space-x-2 flex-col sm:flex-row">
-            <p className="my-2 font-medium">Connected Address:</p>
-            <Address address={connectedAddress} />
-          </div>
+      <Container maxW="container.xl" py={10}>
+        <Stack spacing={8}>
+          {connectedAddress && (
+            <Box p={6} borderWidth={1} borderRadius="lg">
+              <Heading size="md" mb={4}>
+                Publish New Game
+              </Heading>
+              <Stack>
+                <Input
+                  placeholder="Game Title"
+                  value={title}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setTitle(e.target.value)}
+                />
+                <Input
+                  placeholder="Price in ETH"
+                  value={price}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPrice(e.target.value)}
+                />
+                <Input
+                  type="file"
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSelectedFile(e.target.files?.[0] || null)}
+                />
+                <Button colorScheme="blue" onClick={handlePublishGame}>
+                  Publish Game
+                </Button>
+              </Stack>
+            </Box>
+          )}
 
-          <p className="text-center text-lg">
-            Get started by editing{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/nextjs/app/page.tsx
-            </code>
-          </p>
-          <p className="text-center text-lg">
-            Edit your smart contract{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              YourContract.sol
-            </code>{" "}
-            in{" "}
-            <code className="italic bg-base-300 text-base font-bold max-w-full break-words break-all inline-block">
-              packages/hardhat/contracts
-            </code>
-          </p>
-        </div>
+          {!connectedAddress && <Text>Please connect your wallet to publish or purchase games.</Text>}
 
-        <div className="flex-grow bg-base-300 w-full mt-16 px-8 py-12">
-          <div className="flex justify-center items-center gap-12 flex-col sm:flex-row">
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <BugAntIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Tinker with your smart contract using the{" "}
-                <Link href="/debug" passHref className="link">
-                  Debug Contracts
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-            <div className="flex flex-col bg-base-100 px-10 py-10 text-center items-center max-w-xs rounded-3xl">
-              <MagnifyingGlassIcon className="h-8 w-8 fill-secondary" />
-              <p>
-                Explore your local transactions with the{" "}
-                <Link href="/blockexplorer" passHref className="link">
-                  Block Explorer
-                </Link>{" "}
-                tab.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+          {connectedAddress && (
+            <Box p={6} borderWidth={1} borderRadius="lg">
+              <Heading size="md" mb={4}>
+                Published Games
+              </Heading>
+              <Stack spacing={4}>
+                {games?.map((game: Game, index: number) => (
+                  <Box key={index} p={4} borderWidth={1} borderRadius="md">
+                    <Text fontWeight="bold">{game.title}</Text>
+                    <Text>Price: {ethers.formatEther(game.price)} ETH</Text>
+                    {gameOwnerships[index] ? (
+                      <Link href={gameUploadService.getIpfsUrl(game.ipfsHash)} isExternal>
+                        Download Game
+                      </Link>
+                    ) : (
+                      <Button onClick={() => handlePurchaseGame(index, game.price)}>Purchase Game</Button>
+                    )}
+                  </Box>
+                ))}
+                {games?.length === 0 && <Text>No games published yet</Text>}
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      </Container>
     </>
   );
 };
