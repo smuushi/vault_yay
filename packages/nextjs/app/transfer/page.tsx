@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "react-hot-toast";
 import { useAccount } from "wagmi";
 import { useScaffoldContract, useScaffoldWriteContract } from "~~/hooks/scaffold-eth";
@@ -9,21 +9,19 @@ export default function TransferPage() {
   const { address } = useAccount();
   const [toAddress, setToAddress] = useState("");
   const [selectedTokenId, setSelectedTokenId] = useState<number | null>(null);
-  const { data: gameContract } = useScaffoldContract({
-    contractName: "GameOwnership",
-  });
-
   const [ownedTokens, setOwnedTokens] = useState<number[]>([]);
-
+  const { data: gameContract } = useScaffoldContract({ contractName: "GameOwnership" });
   const { writeContractAsync: transferNFT } = useScaffoldWriteContract("GameOwnership");
+  const [isLoading, setIsLoading] = useState(false);
 
   const loadOwnedTokens = async () => {
-    if (!gameContract || !address) return;
+    if (isLoading || !gameContract || !address) return;
+
     try {
-      // This would be implemented in your contract
+      setIsLoading(true);
       const balance = await gameContract.read.balanceOf([address]);
       const tokens = [];
-      for (let i = 0; i < balance; i++) {
+      for (let i = 0; i < Number(balance); i++) {
         const tokenId = await gameContract.read.tokenOfOwnerByIndex([address, BigInt(i)]);
         tokens.push(Number(tokenId));
       }
@@ -31,8 +29,15 @@ export default function TransferPage() {
     } catch (error) {
       console.error(error);
       toast.error("Failed to load owned tokens");
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Load once when component mounts
+  useEffect(() => {
+    loadOwnedTokens();
+  }, [address]); // Only reload when these change
 
   const handleTransfer = async () => {
     if (!address || !selectedTokenId || !toAddress) return;

@@ -14,13 +14,15 @@ export default function DownloadPage() {
   const { address } = useAccount();
   const [ownedGames, setOwnedGames] = useState<GameNFT[]>([]);
   const { data: gameContract } = useScaffoldContract({ contractName: "GameOwnership" });
+  const [isLoading, setIsLoading] = useState(false);
 
   const loadOwnedGames = async () => {
-    if (!gameContract || !address) return;
+    if (isLoading || !gameContract || !address) return;
     try {
+      setIsLoading(true);
       const balance = await gameContract.read.balanceOf([address]);
       const games = [];
-      for (let i = 0; i < balance; i++) {
+      for (let i = 0; i < Number(balance); i++) {
         const tokenId = await gameContract.read.tokenOfOwnerByIndex([address, BigInt(i)]);
         const storageKey = await gameContract.read.getGameStorageKey([tokenId]);
         games.push({ tokenId: Number(tokenId), storageKey });
@@ -29,6 +31,8 @@ export default function DownloadPage() {
     } catch (error) {
       console.error(error);
       toast.error("Failed to load owned games");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -44,7 +48,7 @@ export default function DownloadPage() {
 
   useEffect(() => {
     loadOwnedGames();
-  }, [address, gameContract]);
+  }, [address]);
 
   return (
     <div className="flex flex-col gap-6 p-4">
